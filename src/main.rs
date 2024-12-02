@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use clap::Parser;
 use regex::Regex;
+use shadow_rs::shadow;
 use std::sync::LazyLock;
 use tracing::{info, warn};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
@@ -11,16 +12,37 @@ use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 static RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(\d+)\s+(\w+)\(([^\)]+)\)\s+= (\S+)(.*)").unwrap());
 
+const ABOUT: &str =
+    "Copy the files needed for a program, from one prefix to another, using strace.";
+const LONG_ABOUT: &str =
+    "Copy the files needed for a program, from one prefix to another, using strace.
+
+To create the required strace log file run (see man strace for details):
+
+strace -o <log file> -ff -e trace=file,process <command line ...>
+";
+
+shadow!(build);
+
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(
+    name="strace-copy",
+    version = build::CLAP_LONG_VERSION,
+    author="Jérôme Robert",
+    about=ABOUT,
+    long_about=LONG_ABOUT
+)]
 struct Cli {
     #[arg(long, short)]
     verbose: bool,
     #[arg(long, default_value = "/usr/")]
+    /// Source prefix
     prefix: PathBuf,
-    destination_directory: PathBuf,
+    /// Destination prefix
+    destination_prefix: PathBuf,
     #[arg(num_args=1..)]
-    input_files: Vec<String>,
+    /// input `strace` log files
+    strace_logs: Vec<String>,
 }
 
 fn strace_line_to_path(line: &str) -> Option<PathBuf> {
@@ -94,7 +116,7 @@ fn relative_path(a: &Path, b: &Path) -> PathBuf {
 fn main() {
     let cli = Cli::parse();
     init_logger(cli.verbose);
-    for input_file in cli.input_files {
+    for input_file in cli.strace_logs {
         let file = File::open(input_file).expect("Cannot open file");
         let reader = BufReader::new(file);
         for src_path in reader
@@ -112,7 +134,7 @@ fn main() {
                 }
             };
             if let Ok(path) = can_path.strip_prefix(&cli.prefix) {
-                let dst_path = cli.destination_directory.join(path);
+                let dst_path = cli.destination_prefix.join(path);
                 if let Some(parent) = dst_path.parent() {
                     if let Err(e) = std::fs::create_dir_all(parent) {
                         warn!("Cannot create directory {parent:?}: {e:?}");
@@ -127,9 +149,9 @@ fn main() {
                 if can_path != src_path && src_path.is_symlink() {
                     if let Ok(nc_path) = src_path.strip_prefix(&cli.prefix) {
                         // create a symlink from nc_path to path.
-                        let link = cli.destination_directory.join(nc_path);
+                        let link = cli.destination_prefix.join(nc_path);
                         let _ = std::fs::remove_file(&link);
-                        let original = cli.destination_directory.join(path);
+                        let original = cli.destination_prefix.join(path);
                         let rel_sl_tgt = relative_path(&link, &original);
                         info!("Create link {link:?} to {rel_sl_tgt:?} (aka {original:?})");
                         if let Some(parent) = link.parent() {
@@ -137,10 +159,9 @@ fn main() {
                                 warn!("Cannot create directory {parent:?}: {e:?}");
                             }
                         }
-                        if let Err(e) = std::os::unix::fs::symlink(&rel_sl_tgt, &link) {
-                            warn!("Cannot create symlink from {link:?} to {original:?}: {e:?}");
-                            panic!();
-                        }
+                        std::os::unix::fs::symlink(&rel_sl_tgt, &link).unwrap_or_else(|_| {
+                            panic!("Cannot create symlink from {link:?} to {original:?}")
+                        });
                     }
                 }
             }
