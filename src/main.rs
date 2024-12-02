@@ -41,10 +41,8 @@ fn strace_line_to_path(line: &str) -> Option<PathBuf> {
         None
     } else {
         match name.as_str() {
-            "openat" => Some(args[1].clone().into()),
-            "open" => Some(args[0].clone().into()),
-            "readlink" => Some(args[0].clone().into()),
-            "execve" => Some(args[0].clone().into()),
+            "openat" | "newfstatat" => Some(args[1].clone().into()),
+            "open" | "readlink" | "execve" => Some(args[0].clone().into()),
             _ => None,
         }
     }
