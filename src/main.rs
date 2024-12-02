@@ -27,16 +27,17 @@ fn strace_line_to_path(line: &str) -> Option<PathBuf> {
     let caps = RE.captures(line)?;
     let _pid: usize = caps[1].parse().unwrap();
     let name = caps[2].to_string();
-    if name.starts_with("syscall") {
+    if name.starts_with("syscall") || name == "exit" || name == "exit_group" {
         return None;
     }
     let args: Vec<String> = caps[3]
         .split(',')
         .map(|s| s.trim_matches(['"', ' ']).to_string())
         .collect();
-    let return_value: isize = caps[4]
-        .parse()
-        .unwrap_or_else(|_| panic!("Error while parsing {line}"));
+    let Ok(return_value) = caps[4].parse::<isize>() else {
+        warn!("Skipping line {line}");
+        return None;
+    };
     if return_value == -1 {
         None
     } else {
