@@ -10,7 +10,7 @@ use tracing::{info, warn};
 use tracing_subscriber::filter::{EnvFilter, LevelFilter};
 
 static RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"(\d+)\s+(\w+)\(([^\)]+)\)\s+= (\S+)(.*)").unwrap());
+    LazyLock::new(|| Regex::new(r"(\w+)\(([^\)]+)\)\s+= (\S+)(.*)").unwrap());
 
 const ABOUT: &str =
     "Copy the files needed for a program, from one prefix to another, using strace.";
@@ -47,16 +47,15 @@ struct Cli {
 
 fn strace_line_to_path(line: &str) -> Option<PathBuf> {
     let caps = RE.captures(line)?;
-    let _pid: usize = caps[1].parse().unwrap();
-    let name = caps[2].to_string();
+    let name = caps[1].to_string();
     if name.starts_with("syscall") || name == "exit" || name == "exit_group" {
         return None;
     }
-    let args: Vec<String> = caps[3]
+    let args: Vec<String> = caps[2]
         .split(',')
         .map(|s| s.trim_matches(['"', ' ']).to_string())
         .collect();
-    let Ok(return_value) = caps[4].parse::<isize>() else {
+    let Ok(return_value) = caps[3].parse::<isize>() else {
         warn!("Skipping line {line}");
         return None;
     };
